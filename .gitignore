@@ -1,0 +1,5 @@
+dist/
+go/bin/
+*.tar.gz
+*.part
+.DS_Store

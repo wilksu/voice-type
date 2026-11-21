@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>voice-type 设置</title>
+<style>
+  :root {
+    --bg: #141418;
+    --card: #1d1e24;
+    --border: rgba(255,255,255,0.09);
+    --text: #f4f4f5;
+    --muted: #a1a1aa;
+    --accent: #34d399;
+    --danger: #f87171;
+    --input-bg: #121317;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px 16px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Noto Sans CJK SC", sans-serif;
+    font-size: 14px;
+  }
+  .container {
+    max-width: 560px;
+    margin: 0 auto;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px 24px;
+  }
+  h1 {
+    margin: 0 0 18px;
+    font-size: 18px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 145px 1fr;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  label { color: var(--muted); font-size: 13px; }
+  input[type="text"], input[type="password"], input[type="number"], select, textarea {
+    width: 100%;
+    background: var(--input-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+  }
+  .inline { display: flex; gap: 8px; align-items: center; }
+  .inline > input, .inline > select { flex: 1; }
+  button {
+    background: #272832;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover { background: #313240; }
+  button.primary {
+    background: var(--accent);
+    color: #09130f;
+    border-color: transparent;
+    font-weight: 600;
+  }
+  button.primary:hover { filter: brightness(1.06); }
+  button.recording {
+    background: rgba(248, 113, 113, 0.18);
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .prompt-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 14px 0 6px;
+  }
+  textarea {
+    min-height: 82px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  .footer {
+    margin-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .status { font-size: 13px; color: var(--muted); }
+  .range-wrap { display: flex; align-items: center; gap: 10px; }
+  .range-wrap input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .range-val { min-width: 38px; text-align: right; color: var(--text); font-size: 13px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag-btn {
+    padding: 5px 10px;
+    font-size: 12px;
+    border-radius: 999px;
+    background: var(--input-bg);
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .tag-btn.active {
+    background: rgba(52, 211, 153, 0.16);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1><span class="dot"></span> voice-type 设置</h1>
+
+  <div class="row">
+    <label>触发快捷键</label>
+    <div class="inline">
+      <input id="hotkeyKey" type="text" readonly />
+      <button id="recordBtn" type="button">录制快捷键</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>触发模式</label>
+    <select id="hotkeyMode">
+      <option value="push_to_talk">按住说话，松开上屏</option>
+      <option value="toggle">按一下开始，再按一下上屏</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label>上屏粘贴方式</label>
+    <select id="pasteShortcut">
+      <option value="ctrl+v">Ctrl + V（通用应用）</option>
+      <option value="ctrl+shift+v">Ctrl + Shift + V（终端专用）</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label>状态提示方式</label>
+    <select id="notifyMode">
+      <option value="hud">底部半透明胶囊 + 轻提示音</option>
+      <option value="osd">KDE 原生底部 OSD + 轻提示音</option>
+      <option value="sound">仅轻提示音（无弹窗）</option>
+      <option value="errors_only">完全静音（仅报错弹窗）</option>
+      <option value="off">全部关闭</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label>胶囊距底边 (%)</label>
+    <div class="range-wrap">
+      <input id="hudBottom" type="range" min="5" max="35" step="1" value="12" />
+      <span class="range-val" id="hudBottomVal">12%</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>AI 长句润色</label>
+    <div class="inline">
+      <input id="polishEnabled" type="checkbox" style="width:auto;" />
+      <span style="color:var(--muted);font-size:13px;">启用本地大模型润色</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>LLM 接口地址</label>
+    <input id="baseUrl" type="text" placeholder="http://127.0.0.1:1234/v1" />
+  </div>
+
+  <div class="row">
+    <label>LLM 凭据 (API Key)</label>
+    <div class="inline">
+      <input id="apiKey" type="password" />
+      <button id="toggleKeyBtn" type="button">显示</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>LLM 模型名称</label>
+    <div class="inline">
+      <input id="modelName" type="text" list="modelList" placeholder="留空自动检测当前模型" />
+      <datalist id="modelList"></datalist>
+      <button id="detectBtn" type="button">自动检测</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>润色最短字数</label>
+    <input id="minChars" type="number" min="1" max="50" value="10" />
+  </div>
+
+  <div class="row">
+    <label>行业/领域标签</label>
+    <div class="tags" id="domainTags">
+      <button type="button" class="tag-btn" data-domain="it">IT / 软件开发</button>
+      <button type="button" class="tag-btn" data-domain="finance">金融 / 财经</button>
+      <button type="button" class="tag-btn" data-domain="office">日常办公</button>
+      <button type="button" class="tag-btn" data-domain="science">学术科研</button>
+      <button type="button" class="tag-btn" data-domain="medical">医学 / 健康</button>
+      <button type="button" class="tag-btn" data-domain="legal">法律 / 合规</button>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>常用热词 / 专有名词</label>
+    <input id="glossary" type="text" placeholder="如：Bazzite, Wayland, KWin, star-ferry, SenseVoice" />
+  </div>
+
+  <div class="row">
+    <label>日志级别</label>
+    <select id="logLevel">
+      <option value="error">Error（仅错误，最精简）</option>
+      <option value="warn">Warn（警告与错误）</option>
+      <option value="info">Info（常规状态，推荐）</option>
+      <option value="debug">Debug（详尽调试）</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label>隐私日志保护</label>
+    <div class="inline">
+      <input id="logTranscript" type="checkbox" style="width:auto;" />
+      <span style="color:var(--muted);font-size:13px;">记录语音识别原文（默认关闭，防止敏感信息落盘）</span>
+    </div>
+  </div>
+
+  <div class="prompt-header">
+    <label>润色系统提示词 (Prompt)</label>
+    <button id="resetPromptBtn" type="button">恢复默认</button>
+  </div>
+  <textarea id="systemPrompt"></textarea>
+
+  <div class="footer">
+    <span class="status" id="status"></span>
+    <div class="inline">
+      <button id="closeBtn" type="button">关闭页面</button>
+      <button id="saveBtn" class="primary" type="button">保存并应用</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DEFAULT_PROMPT = __DEFAULT_PROMPT__;
+const CODE_MAP = {
+  AltRight: "KEY_RIGHTALT",
+  AltLeft: "KEY_LEFTALT",
+  ControlRight: "KEY_RIGHTCTRL",
+  ControlLeft: "KEY_LEFTCTRL",
+  ShiftRight: "KEY_RIGHTSHIFT",
+  ShiftLeft: "KEY_LEFTSHIFT",
+  CapsLock: "KEY_CAPSLOCK",
+  Pause: "KEY_PAUSE",
+  ScrollLock: "KEY_SCROLLLOCK",
+  Insert: "KEY_INSERT",
+  Delete: "KEY_DELETE",
+  Home: "KEY_HOME",
+  End: "KEY_END",
+  PageUp: "KEY_PAGEUP",
+  PageDown: "KEY_PAGEDOWN",
+  ContextMenu: "KEY_MENU",
+  F1: "KEY_F1", F2: "KEY_F2", F3: "KEY_F3", F4: "KEY_F4",
+  F5: "KEY_F5", F6: "KEY_F6", F7: "KEY_F7", F8: "KEY_F8",
+  F9: "KEY_F9", F10: "KEY_F10", F11: "KEY_F11", F12: "KEY_F12"
+};
+const CONFLICT = new Set(["Escape", "Enter", "Space", "Tab", "Backspace", "MetaLeft", "MetaRight"]);
+
+const el = id => document.getElementById(id);
+let recording = false;
+
+el("hudBottom").addEventListener("input", () => {
+  el("hudBottomVal").textContent = el("hudBottom").value + "%";
+});
+
+el("toggleKeyBtn").addEventListener("click", () => {
+  const inp = el("apiKey");
+  inp.type = inp.type === "password" ? "text" : "password";
+  el("toggleKeyBtn").textContent = inp.type === "password" ? "显示" : "隐藏";
+});
+
+el("resetPromptBtn").addEventListener("click", () => {
+  el("systemPrompt").value = DEFAULT_PROMPT;
+});
+
+function setRecording(on) {
+  recording = on;
+  const btn = el("recordBtn");
+  btn.textContent = on ? "请按键 (Esc 取消)..." : "录制快捷键";
+  btn.classList.toggle("recording", on);
+}
+
+el("recordBtn").addEventListener("click", () => setRecording(!recording));
+
+window.addEventListener("keydown", (e) => {
+  if (!recording) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.code === "Escape") {
+    setRecording(false);
+    el("status").textContent = "已取消录制";
+    return;
+  }
+  if (CONFLICT.has(e.code)) {
+    setRecording(false);
+    el("status").textContent = "⚠️ 该按键易与系统或输入冲突，请换一个键";
+    return;
+  }
+  const mapped = CODE_MAP[e.code];
+  if (!mapped) {
+    setRecording(false);
+    el("status").textContent = "⚠️ 建议使用 右Alt、右Ctrl、F8~F12、CapsLock 等功能键";
+    return;
+  }
+  el("hotkeyKey").value = mapped;
+  setRecording(false);
+  el("status").textContent = "已录制快捷键: " + mapped;
+}, true);
+
+el("detectBtn").addEventListener("click", async () => {
+  el("status").textContent = "正在查询模型列表...";
+  try {
+    const res = await fetch("/api/models", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        base_url: el("baseUrl").value.trim(),
+        api_key: el("apiKey").value.trim()
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "检测失败");
+    const dl = el("modelList");
+    dl.innerHTML = "";
+    (data.models || []).forEach(m => {
+      const opt = document.createElement("option");
+      opt.value = m;
+      dl.appendChild(opt);
+    });
+    if (data.models && data.models.length > 0) {
+      el("modelName").value = data.models[0];
+      el("status").textContent = "✅ 检测到 " + data.models.length + " 个模型，已选中: " + data.models[0];
+    } else {
+      el("status").textContent = "⚠️ 接口可通，但未检测到已加载的对话模型";
+    }
+  } catch (err) {
+    el("status").textContent = "❌ 检测失败: " + err.message;
+  }
+});
+
+document.querySelectorAll("#domainTags .tag-btn").forEach(btn => {
+  btn.addEventListener("click", () => btn.classList.toggle("active"));
+});
+
+el("closeBtn").addEventListener("click", () => {
+  window.open("", "_self");
+  window.close();
+  setTimeout(() => {
+    el("status").textContent = "若浏览器拦截自动关闭，请按 Ctrl+W 关闭此标签页";
+  }, 150);
+});
+
+el("saveBtn").addEventListener("click", async () => {
+  const domains = Array.from(document.querySelectorAll("#domainTags .tag-btn.active"))
+    .map(b => b.dataset.domain);
+  const payload = {
+    hotkey_key: el("hotkeyKey").value.trim(),
+    hotkey_mode: el("hotkeyMode").value,
+    paste_shortcut: el("pasteShortcut").value,
+    notify_mode: el("notifyMode").value,
+    hud_bottom_percent: Number(el("hudBottom").value),
+    polish_enabled: el("polishEnabled").checked,
+    base_url: el("baseUrl").value.trim(),
+    api_key: el("apiKey").value.trim(),
+    model: el("modelName").value.trim(),
+    min_chars_for_llm: Number(el("minChars").value) || 10,
+    domains,
+    glossary: el("glossary").value.trim(),
+    log_level: el("logLevel").value,
+    log_transcript: el("logTranscript").checked,
+    system_prompt: el("systemPrompt").value.trim()
+  };
+  el("status").textContent = "正在保存...";
+  const res = await fetch("/api/save", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  el("status").textContent = res.ok ? ("✅ " + (data.message || "已保存并应用")) : ("❌ " + data.error);
+});
+
+(async function init() {
+  const res = await fetch("/api/config");
+  const cfg = await res.json();
+  el("hotkeyKey").value = cfg.hotkey.key || "KEY_RIGHTALT";
+  el("hotkeyMode").value = cfg.hotkey.mode || "push_to_talk";
+  el("pasteShortcut").value = cfg.injector.paste_shortcut || "ctrl+v";
+  el("notifyMode").value = cfg.notify.mode || "hud";
+  const pct = cfg.notify.hud_bottom_percent || 12;
+  el("hudBottom").value = pct;
+  el("hudBottomVal").textContent = pct + "%";
+  el("polishEnabled").checked = !!cfg.polish.enabled;
+  el("baseUrl").value = cfg.polish.base_url || "http://127.0.0.1:1234/v1";
+  el("apiKey").value = cfg.polish.api_key || "";
+  el("modelName").value = cfg.polish.model || "";
+  el("minChars").value = cfg.polish.min_chars_for_llm || 10;
+  const activeDomains = new Set(cfg.polish.domains || []);
+  document.querySelectorAll("#domainTags .tag-btn").forEach(btn => {
+    btn.classList.toggle("active", activeDomains.has(btn.dataset.domain));
+  });
+  el("glossary").value = cfg.polish.glossary || "";
+  el("logLevel").value = (cfg.logging && cfg.logging.level) || "info";
+  el("logTranscript").checked = !!(cfg.logging && cfg.logging.log_transcript);
+  el("systemPrompt").value = cfg.polish.system_prompt || DEFAULT_PROMPT;
+})();
+</script>
+</body>
+</html>
