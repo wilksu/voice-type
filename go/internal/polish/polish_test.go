@@ -34,6 +34,13 @@ func TestBuildSystemPromptWithDomainsAndGlossary(t *testing.T) {
 	}
 }
 
+func TestApplyLocalRulesAndSoftenPeriods(t *testing.T) {
+	got := ApplyLocalRules("够语言不错。技术战也很好。", "够语言=Go语言, 技术战=技术栈")
+	if got != "Go语言不错，技术栈也很好。" {
+		t.Fatalf("unexpected output: %q", got)
+	}
+}
+
 func TestPolisherFallbackOnClosedServer(t *testing.T) {
 	p := NewDoubaoPolisher(config.PolishConfig{
 		Enabled:        true,

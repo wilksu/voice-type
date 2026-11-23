@@ -4,12 +4,18 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 const (
-	DefaultConfigRel = ".config/voice-type/config.json"
-	DefaultModelRel  = ".local/share/voice-type/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
+	DefaultConfigRel          = ".config/voice-type/config.json"
+	DefaultFireRedModelRel    = ".local/share/voice-type/models/sherpa-onnx-fire-red-asr-large-zh_en-2025-02-16"
+	DefaultSenseVoiceModelRel = ".local/share/voice-type/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
+	DefaultParaformerModelRel = ".local/share/voice-type/models/sherpa-onnx-paraformer-zh-2024-03-09"
+	DefaultQwen3ASRModelRel   = ".local/share/voice-type/models/sherpa-onnx-qwen3-asr-0.6B-int8"
+	DefaultWhisperModelRel    = ".local/share/voice-type/models/whisper"
+	DefaultModelRel           = DefaultFireRedModelRel
 )
 
 type HotkeyConfig struct {
@@ -19,11 +25,29 @@ type HotkeyConfig struct {
 }
 
 type AsrConfig struct {
-	ModelDir   string `json:"model_dir"`
-	NumThreads int    `json:"num_threads"`
-	Language   string `json:"language"`
-	UseITN     bool   `json:"use_itn"`
-	UseInt8    bool   `json:"use_int8"`
+	Engine          string `json:"engine"` // "qwen3-asr" | "sensevoice" | "whisper" | "firered" | "paraformer"
+	ModelDir        string `json:"model_dir"`
+	PreviewEngine   string `json:"preview_engine,omitempty"` // "off" | "sensevoice" | "qwen3-asr" | "paraformer"
+	PreviewModelDir string `json:"preview_model_dir,omitempty"`
+	NumThreads      int    `json:"num_threads"`
+	Language        string `json:"language"`
+	UseITN          bool   `json:"use_itn"`
+	UseInt8         bool   `json:"use_int8"`
+}
+
+func (a AsrConfig) PreviewConfig() AsrConfig {
+	p := a
+	p.Engine = a.PreviewEngine
+	if a.PreviewModelDir != "" {
+		p.ModelDir = a.PreviewModelDir
+	} else {
+		p.ModelDir = DefaultModelDirForEngine(a.PreviewEngine)
+	}
+	return p
+}
+
+func DefaultModelDirForEngine(engine string) string {
+	return "~/" + LookupEngine(engine).DefaultDirRel
 }
 
 func (a AsrConfig) ResolvedModelDir() string {
@@ -40,6 +64,7 @@ type PolishConfig struct {
 	Temperature    float64  `json:"temperature"`
 	Domains        []string `json:"domains,omitempty"`
 	Glossary       string   `json:"glossary,omitempty"`
+	Replacements   string   `json:"replacements,omitempty"`
 	SystemPrompt   string   `json:"system_prompt,omitempty"`
 }
 
@@ -70,6 +95,17 @@ type AppConfig struct {
 	Logging  LoggingConfig  `json:"logging"`
 }
 
+func defaultThreads() int {
+	n := runtime.NumCPU() / 2
+	if n < 4 {
+		return 4
+	}
+	if n > 8 {
+		return 8
+	}
+	return n
+}
+
 func DefaultConfig() AppConfig {
 	return AppConfig{
 		Hotkey: HotkeyConfig{
@@ -78,8 +114,9 @@ func DefaultConfig() AppConfig {
 			MinDurationSec: 0.3,
 		},
 		Asr: AsrConfig{
-			ModelDir:   "~/" + DefaultModelRel,
-			NumThreads: 4,
+			Engine:     "firered",
+			ModelDir:   "~/" + DefaultFireRedModelRel,
+			NumThreads: defaultThreads(),
 			Language:   "auto",
 			UseITN:     true,
 			UseInt8:    true,
@@ -93,11 +130,12 @@ func DefaultConfig() AppConfig {
 			MinCharsForLLM: 10,
 			Temperature:    0.1,
 			Domains:        []string{"it", "office"},
+			Replacements:   "够语言=Go语言, 购语言=Go语言, 过语言=Go语言, 构编程语言=Go语言, 技术战=技术栈",
 		},
 		Injector: InjectorConfig{
 			PasteShortcut:    "ctrl+v",
 			PasteDelayMs:     60,
-			RestoreClipboard: false,
+			RestoreClipboard: true,
 			RestoreDelayMs:   350,
 		},
 		Notify: NotifyConfig{
@@ -139,13 +177,26 @@ func Load(path string) (AppConfig, error) {
 	data, err := os.ReadFile(target)
 	if err != nil {
 		if os.IsNotExist(err) {
+			NormalizeAvailableEngines(&cfg.Asr)
 			return cfg, nil
 		}
 		return cfg, err
 	}
 
+	// Clear Engine before unmarshaling so legacy configs without "engine"
+	// can infer the matching engine from their existing model_dir.
+	cfg.Asr.Engine = ""
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return cfg, err
+	}
+	if cfg.Asr.Engine == "" {
+		cfg.Asr.Engine = InferEngineFromModelDir(cfg.Asr.ModelDir)
+	}
+	if cfg.Asr.ModelDir == "" {
+		cfg.Asr.ModelDir = DefaultModelDirForEngine(cfg.Asr.Engine)
+	}
+	if cfg.Asr.NumThreads <= 4 && defaultThreads() > 4 {
+		cfg.Asr.NumThreads = defaultThreads()
 	}
 	if cfg.Notify.Mode == "" {
 		cfg.Notify.Mode = "hud"
@@ -156,6 +207,7 @@ func Load(path string) (AppConfig, error) {
 	if cfg.Logging.Level == "" {
 		cfg.Logging.Level = "info"
 	}
+	NormalizeAvailableEngines(&cfg.Asr)
 	return cfg, nil
 }
 
