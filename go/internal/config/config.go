@@ -33,6 +33,7 @@ type AsrConfig struct {
 	Language        string `json:"language"`
 	UseITN          bool   `json:"use_itn"`
 	UseInt8         bool   `json:"use_int8"`
+	MaxRSSMB        int    `json:"max_rss_mb"` // Auto-recycle ASR recognizer when idle above this RSS (0 = disabled)
 }
 
 func (a AsrConfig) PreviewConfig() AsrConfig {
@@ -120,6 +121,7 @@ func DefaultConfig() AppConfig {
 			Language:   "auto",
 			UseITN:     true,
 			UseInt8:    true,
+			MaxRSSMB:   2560,
 		},
 		Polish: PolishConfig{
 			Enabled:        true,

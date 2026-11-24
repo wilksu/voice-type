@@ -33,6 +33,7 @@ type savePayload struct {
 	AsrEngine        string   `json:"asr_engine"`
 	AsrPreviewEngine string   `json:"asr_preview_engine"`
 	AsrLanguage      string   `json:"asr_language"`
+	MaxRSSMB         int      `json:"max_rss_mb"`
 	PasteShortcut    string   `json:"paste_shortcut"`
 	RestoreClipboard bool     `json:"restore_clipboard"`
 	NotifyMode       string   `json:"notify_mode"`
@@ -163,6 +164,9 @@ func Open(cfgPath string, onReload func()) {
 		fallback := config.NormalizeAvailableEngines(&cfg.Asr)
 		if p.AsrLanguage != "" {
 			cfg.Asr.Language = p.AsrLanguage
+		}
+		if p.MaxRSSMB >= 0 {
+			cfg.Asr.MaxRSSMB = p.MaxRSSMB
 		}
 		if p.PasteShortcut != "" {
 			cfg.Injector.PasteShortcut = p.PasteShortcut

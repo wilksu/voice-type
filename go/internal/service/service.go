@@ -43,6 +43,7 @@ After=graphical-session.target pipewire.service
 
 [Service]
 Type=simple
+Environment=MALLOC_ARENA_MAX=2
 ExecStart=%s run
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure

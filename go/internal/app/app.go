@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -112,6 +114,8 @@ type VoiceTypeApp struct {
 	enabled          atomic.Bool
 	polishEnabled    atomic.Bool
 	quitting         atomic.Bool
+	recycling        atomic.Bool
+	recording        bool
 	reloadCh         chan struct{}
 	sessionID        atomic.Int64
 	previewStop      chan struct{}
@@ -167,6 +171,9 @@ func (a *VoiceTypeApp) onStart() {
 		notifier.OnError("录音失败", err.Error())
 		return
 	}
+	a.mu.Lock()
+	a.recording = true
+	a.mu.Unlock()
 	notifier.OnListeningStart()
 	if prevAsr != nil {
 		go a.previewLoop(sid, stopCh, prevAsr)
@@ -260,6 +267,7 @@ func (a *VoiceTypeApp) previewLoop(sid int64, stopCh <-chan struct{}, prevAsr as
 
 func (a *VoiceTypeApp) onStop() {
 	a.mu.Lock()
+	a.recording = false
 	if a.previewStop != nil {
 		close(a.previewStop)
 		a.previewStop = nil
@@ -281,6 +289,7 @@ func (a *VoiceTypeApp) processAudio(samples []float32, sampleRate int, durationS
 	t0 := time.Now()
 	a.mu.Lock()
 	notifier := a.notifier
+	asrRec := a.asr
 	polisher := a.polisher
 	inj := a.injector
 	a.mu.Unlock()
@@ -293,7 +302,7 @@ func (a *VoiceTypeApp) processAudio(samples []float32, sampleRate int, durationS
 	notifier.OnProcessing()
 
 	tAsr := time.Now()
-	rawText, err := a.asr.Transcribe(samples, sampleRate)
+	rawText, err := asrRec.Transcribe(samples, sampleRate)
 	asrMs := time.Since(tAsr).Milliseconds()
 	if err != nil {
 		log.Printf("ASR failed: %v", err)
@@ -331,6 +340,85 @@ func (a *VoiceTypeApp) processAudio(samples []float32, sampleRate int, durationS
 		logger.Infof("[%dms = ASR %dms + Polish %dms] len=%d->%d", totalMs, asrMs, polishMs, len([]rune(rawText)), len([]rune(finalText)))
 	}
 	notifier.OnDone(FormatPreviewText(finalText, 36))
+	a.maybeRecycleASR()
+}
+
+func currentRSSMB() int {
+	data, err := os.ReadFile("/proc/self/statm")
+	if err != nil {
+		return 0
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 2 {
+		return 0
+	}
+	pages, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil || pages <= 0 {
+		return 0
+	}
+	return int((pages * int64(os.Getpagesize())) / (1024 * 1024))
+}
+
+func (a *VoiceTypeApp) maybeRecycleASR() {
+	a.mu.Lock()
+	maxMB := a.cfg.Asr.MaxRSSMB
+	a.mu.Unlock()
+	if maxMB <= 0 {
+		return
+	}
+	beforeMB := currentRSSMB()
+	if beforeMB <= maxMB {
+		return
+	}
+	if !a.recycling.CompareAndSwap(false, true) {
+		return
+	}
+	defer a.recycling.Store(false)
+
+	a.mu.Lock()
+	if a.recording || a.quitting.Load() || a.asr == nil {
+		a.mu.Unlock()
+		return
+	}
+	cfg := a.cfg
+	oldAsr := a.asr
+	oldPreview := a.previewAsr
+	newAsr := asr.NewRecognizer(cfg.Asr, cfg.Polish.Glossary)
+	newPreview := initPreviewRecognizer(cfg, newAsr)
+	a.asr = newAsr
+	a.previewAsr = newPreview
+	a.mu.Unlock()
+
+	oldAsr.Close()
+	if oldPreview != nil && oldPreview != oldAsr {
+		oldPreview.Close()
+	}
+	asr.TrimMemory()
+
+	if err := newAsr.Load(); err != nil {
+		log.Printf("Recycle ASR reload failed: %v", err)
+	}
+	if newPreview != nil && newPreview != newAsr {
+		if err := newPreview.Load(); err != nil {
+			log.Printf("Recycle preview ASR reload failed: %v", err)
+		}
+	}
+	logger.Infof("Recycled ASR recognizer (RSS %d MB > %d MB limit) -> now %d MB", beforeMB, maxMB, currentRSSMB())
+}
+
+func (a *VoiceTypeApp) closeRecognizers() {
+	a.mu.Lock()
+	mainRec := a.asr
+	prevRec := a.previewAsr
+	a.asr = nil
+	a.previewAsr = nil
+	a.mu.Unlock()
+	if mainRec != nil {
+		mainRec.Close()
+	}
+	if prevRec != nil && prevRec != mainRec {
+		prevRec.Close()
+	}
 }
 
 func (a *VoiceTypeApp) Run() error {
@@ -345,7 +433,7 @@ func (a *VoiceTypeApp) Run() error {
 	if err := a.asr.Load(); err != nil {
 		return err
 	}
-	defer a.asr.Close()
+	defer a.closeRecognizers()
 
 	if a.previewAsr != nil && a.previewAsr != a.asr {
 		if err := a.previewAsr.Load(); err != nil {
@@ -353,8 +441,6 @@ func (a *VoiceTypeApp) Run() error {
 			a.mu.Lock()
 			a.previewAsr = nil
 			a.mu.Unlock()
-		} else {
-			defer a.previewAsr.Close()
 		}
 	}
 
