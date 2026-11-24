@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -19,15 +20,17 @@ import (
 )
 
 const (
-	keyLeftCtrl  = 29
-	keyLeftShift = 42
-	keyV         = 47
+	keyLeftCtrl         = 29
+	keyLeftShift        = 42
+	keyV                = 47
+	maxClipboardBackupB = 4 * 1024 * 1024 // 4MB cap to stay lightweight
 )
 
 type WaylandTextInjector struct {
 	cfg         config.InjectorConfig
 	mu          sync.Mutex
 	ydotooldCmd *exec.Cmd
+	pasteSeq    atomic.Int64
 }
 
 func NewWaylandTextInjector(cfg config.InjectorConfig) *WaylandTextInjector {
@@ -127,23 +130,69 @@ func (w *WaylandTextInjector) Cleanup() {
 	}
 }
 
-func (w *WaylandTextInjector) readClipboard() ([]byte, bool) {
+type clipboardSnapshot struct {
+	data     []byte
+	mimeType string
+}
+
+func pickPrimaryMime(listOutput string) string {
+	var firstValid string
+	for _, line := range strings.Split(listOutput, "\n") {
+		m := strings.TrimSpace(line)
+		if m == "" || m == "TARGETS" || m == "TIMESTAMP" || m == "MULTIPLE" || m == "SAVE_TARGETS" {
+			continue
+		}
+		if m == "text/plain;charset=utf-8" || m == "UTF8_STRING" || m == "text/plain" {
+			return m
+		}
+		if firstValid == "" {
+			firstValid = m
+		}
+	}
+	return firstValid
+}
+
+func (w *WaylandTextInjector) readClipboard() (*clipboardSnapshot, bool) {
 	if _, err := exec.LookPath("wl-paste"); err != nil {
 		return nil, false
 	}
-	out, err := exec.Command("wl-paste", "--no-newline").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 800*time.Millisecond)
+	defer cancel()
+
+	typesOut, err := exec.CommandContext(ctx, "wl-paste", "--list-types").Output()
 	if err != nil {
 		return nil, false
 	}
-	return out, true
+	mime := pickPrimaryMime(string(typesOut))
+	if mime == "" {
+		return nil, false
+	}
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	defer cancel2()
+	out, err := exec.CommandContext(ctx2, "wl-paste", "--no-newline", "--type", mime).Output()
+	if err != nil || len(out) > maxClipboardBackupB {
+		return nil, false
+	}
+	return &clipboardSnapshot{data: out, mimeType: mime}, true
 }
 
-func (w *WaylandTextInjector) writeClipboard(data []byte) error {
+func (w *WaylandTextInjector) writeClipboard(data []byte, mimeType string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "wl-copy")
+	var args []string
+	if mimeType != "" {
+		args = []string{"--type", mimeType}
+	}
+	cmd := exec.CommandContext(ctx, "wl-copy", args...)
 	cmd.Stdin = bytes.NewReader(data)
 	return cmd.Run()
+}
+
+func (w *WaylandTextInjector) clearClipboard() {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = exec.CommandContext(ctx, "wl-copy", "--clear").Run()
 }
 
 func (w *WaylandTextInjector) triggerPaste() error {
@@ -187,30 +236,45 @@ func (w *WaylandTextInjector) Inject(text string) error {
 		return nil
 	}
 
-	var prev []byte
+	w.mu.Lock()
+	cfg := w.cfg
+	w.mu.Unlock()
+
+	seq := w.pasteSeq.Add(1)
+
+	var snap *clipboardSnapshot
 	var hadPrev bool
-	if w.cfg.RestoreClipboard {
-		prev, hadPrev = w.readClipboard()
+	if cfg.RestoreClipboard {
+		snap, hadPrev = w.readClipboard()
 	}
 
-	if err := w.writeClipboard([]byte(text)); err != nil {
+	if err := w.writeClipboard([]byte(text), ""); err != nil {
 		return fmt.Errorf("wl-copy failed: %w", err)
 	}
-	if w.cfg.PasteDelayMs > 0 {
-		time.Sleep(time.Duration(w.cfg.PasteDelayMs) * time.Millisecond)
+	if cfg.PasteDelayMs > 0 {
+		time.Sleep(time.Duration(cfg.PasteDelayMs) * time.Millisecond)
 	}
 
 	if err := w.triggerPaste(); err != nil {
 		return err
 	}
 
-	if w.cfg.RestoreClipboard && hadPrev {
-		delay := w.cfg.RestoreDelayMs
-		if delay < 100 {
-			delay = 100
+	if cfg.RestoreClipboard {
+		delay := cfg.RestoreDelayMs
+		if delay < 150 {
+			delay = 150
 		}
-		time.Sleep(time.Duration(delay) * time.Millisecond)
-		_ = w.writeClipboard(prev)
+		go func(mySeq int64, prev *clipboardSnapshot, existed bool, wait time.Duration) {
+			time.Sleep(wait)
+			if w.pasteSeq.Load() != mySeq {
+				return
+			}
+			if existed && prev != nil {
+				_ = w.writeClipboard(prev.data, prev.mimeType)
+			} else {
+				w.clearClipboard()
+			}
+		}(seq, snap, hadPrev, time.Duration(delay)*time.Millisecond)
 	}
 	return nil
 }

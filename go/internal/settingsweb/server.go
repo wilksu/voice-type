@@ -30,7 +30,12 @@ var (
 type savePayload struct {
 	HotkeyKey        string   `json:"hotkey_key"`
 	HotkeyMode       string   `json:"hotkey_mode"`
+	AsrEngine        string   `json:"asr_engine"`
+	AsrPreviewEngine string   `json:"asr_preview_engine"`
+	AsrLanguage      string   `json:"asr_language"`
+	MaxRSSMB         int      `json:"max_rss_mb"`
 	PasteShortcut    string   `json:"paste_shortcut"`
+	RestoreClipboard bool     `json:"restore_clipboard"`
 	NotifyMode       string   `json:"notify_mode"`
 	HudBottomPercent float64  `json:"hud_bottom_percent"`
 	PolishEnabled    bool     `json:"polish_enabled"`
@@ -40,6 +45,7 @@ type savePayload struct {
 	MinCharsForLLM   int      `json:"min_chars_for_llm"`
 	Domains          []string `json:"domains"`
 	Glossary         string   `json:"glossary"`
+	Replacements     string   `json:"replacements"`
 	SystemPrompt     string   `json:"system_prompt"`
 	LogLevel         string   `json:"log_level"`
 	LogTranscript    bool     `json:"log_transcript"`
@@ -75,7 +81,13 @@ func Open(cfgPath string, onReload func()) {
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		cfg, _ := config.Load(cfgPath)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(cfg)
+		_ = json.NewEncoder(w).Encode(struct {
+			config.AppConfig
+			Engines []config.EngineStatus `json:"engines"`
+		}{
+			AppConfig: cfg,
+			Engines:   config.EngineStatuses(),
+		})
 	})
 
 	mux.HandleFunc("/api/models", func(w http.ResponseWriter, r *http.Request) {
@@ -136,9 +148,30 @@ func Open(cfgPath string, onReload func()) {
 		if p.HotkeyMode != "" {
 			cfg.Hotkey.Mode = p.HotkeyMode
 		}
+		if p.AsrEngine != "" && p.AsrEngine != cfg.Asr.Engine {
+			cfg.Asr.Engine = p.AsrEngine
+			cfg.Asr.ModelDir = config.DefaultModelDirForEngine(p.AsrEngine)
+		}
+		if p.AsrPreviewEngine != "" {
+			if p.AsrPreviewEngine == "off" {
+				cfg.Asr.PreviewEngine = "off"
+				cfg.Asr.PreviewModelDir = ""
+			} else if p.AsrPreviewEngine != cfg.Asr.PreviewEngine || cfg.Asr.PreviewModelDir == "" {
+				cfg.Asr.PreviewEngine = p.AsrPreviewEngine
+				cfg.Asr.PreviewModelDir = config.DefaultModelDirForEngine(p.AsrPreviewEngine)
+			}
+		}
+		fallback := config.NormalizeAvailableEngines(&cfg.Asr)
+		if p.AsrLanguage != "" {
+			cfg.Asr.Language = p.AsrLanguage
+		}
+		if p.MaxRSSMB >= 0 {
+			cfg.Asr.MaxRSSMB = p.MaxRSSMB
+		}
 		if p.PasteShortcut != "" {
 			cfg.Injector.PasteShortcut = p.PasteShortcut
 		}
+		cfg.Injector.RestoreClipboard = p.RestoreClipboard
 		cfg.Notify.Enabled = p.NotifyMode != "off"
 		if p.NotifyMode != "" {
 			cfg.Notify.Mode = p.NotifyMode
@@ -157,6 +190,7 @@ func Open(cfgPath string, onReload func()) {
 		}
 		cfg.Polish.Domains = p.Domains
 		cfg.Polish.Glossary = strings.TrimSpace(p.Glossary)
+		cfg.Polish.Replacements = strings.TrimSpace(p.Replacements)
 		if p.SystemPrompt != "" && p.SystemPrompt != polish.DefaultSystemPrompt {
 			cfg.Polish.SystemPrompt = p.SystemPrompt
 		} else {
@@ -186,8 +220,12 @@ func Open(cfgPath string, onReload func()) {
 			go onReload()
 		}
 
+		msg := "已保存并立即生效"
+		if fallback {
+			msg = "已保存（缺失模型已自动切换为当前可用模型）"
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "已保存并立即生效"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": msg})
 	})
 
 	go func() {

@@ -155,8 +155,51 @@ func (p *DoubaoPolisher) ResolveModel() string {
 	return ""
 }
 
+// ApplyLocalRules runs fast 0ms hotword replacements and softens choppy mid-sentence periods.
+func ApplyLocalRules(text, replacements string) string {
+	out := strings.TrimSpace(text)
+	if out == "" {
+		return ""
+	}
+	if strings.TrimSpace(replacements) != "" {
+		normalized := strings.ReplaceAll(replacements, "\n", ",")
+		for _, pair := range strings.Split(normalized, ",") {
+			kv := strings.SplitN(strings.TrimSpace(pair), "=", 2)
+			if len(kv) != 2 {
+				continue
+			}
+			from := strings.TrimSpace(kv[0])
+			to := strings.TrimSpace(kv[1])
+			if from != "" && to != "" {
+				out = strings.ReplaceAll(out, from, to)
+			}
+		}
+	}
+	return SoftenMidPeriods(out)
+}
+
+// SoftenMidPeriods converts choppy mid-sentence "。" between short clauses into "，",
+// keeping the final sentence-ending punctuation intact.
+func SoftenMidPeriods(text string) string {
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) == 0 {
+		return ""
+	}
+	lastClauseStart := 0
+	for i := 0; i < len(runes)-1; i++ {
+		if runes[i] == '。' {
+			clauseLen := i - lastClauseStart
+			if clauseLen > 0 && clauseLen <= 12 {
+				runes[i] = '，'
+			}
+			lastClauseStart = i + 1
+		}
+	}
+	return string(runes)
+}
+
 func (p *DoubaoPolisher) Polish(text string) string {
-	raw := strings.TrimSpace(text)
+	raw := ApplyLocalRules(text, p.cfg.Replacements)
 	if raw == "" || !p.cfg.Enabled {
 		return raw
 	}

@@ -1,18 +1,19 @@
 package main
 
 import (
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"voice-type/internal/app"
+	"voice-type/internal/asr"
 	"voice-type/internal/config"
 	"voice-type/internal/hotkey"
 	"voice-type/internal/injector"
@@ -53,6 +54,8 @@ func main() {
 			os.Exit(1)
 		}
 		os.Exit(cmdTestPolish(*cfgPath, strings.Join(args[1:], " ")))
+	case "test-asr":
+		os.Exit(cmdTestASR(*cfgPath, args[1:]))
 	default:
 		printUsage()
 		os.Exit(1)
@@ -66,9 +69,10 @@ func printUsage() {
 	fmt.Println("  settings         Open graphical settings window")
 	fmt.Println("  doctor           Check dependencies, devices, models, and LLM")
 	fmt.Println("  init-config      Write default config JSON")
-	fmt.Println("  download-model   Download SenseVoice-Small INT8 model (ModelScope)")
+	fmt.Println("  download-model   Download ASR model (-engine qwen3-asr|sensevoice|whisper|firered|paraformer)")
 	fmt.Println("  service <action> Manage systemd user service (install|uninstall|start|stop|restart|status|logs)")
 	fmt.Println("  test-polish      Test Doubao-style LLM polishing")
+	fmt.Println("  test-asr         Test configured ASR engine on a 16kHz mono s16 WAV file")
 }
 
 func cmdRun(cfgPath string) int {
@@ -104,11 +108,12 @@ func cmdRun(cfgPath string) int {
 
 func cmdDownloadModel(args []string) int {
 	fs := flag.NewFlagSet("download-model", flag.ExitOnError)
+	engine := fs.String("engine", "qwen3-asr", "qwen3-asr, sensevoice, whisper, firered, or paraformer")
 	source := fs.String("source", "modelscope", "modelscope or hf-mirror")
 	force := fs.Bool("force", false, "Re-download even if present")
 	_ = fs.Parse(args)
 
-	if err := modeldl.DownloadSenseVoice("", *source, *force); err != nil {
+	if err := modeldl.Download(*engine, "", *source, *force); err != nil {
 		log.Printf("Download failed: %v", err)
 		return 1
 	}
@@ -180,13 +185,10 @@ func cmdDoctor(cfgPath string) int {
 	}
 
 	modelDir := cfg.Asr.ResolvedModelDir()
-	_, tokErr := os.Stat(filepath.Join(modelDir, "tokens.txt"))
-	_, int8Err := os.Stat(filepath.Join(modelDir, "model.int8.onnx"))
-	_, fp32Err := os.Stat(filepath.Join(modelDir, "model.onnx"))
-	if tokErr == nil && (int8Err == nil || fp32Err == nil) {
-		fmt.Printf("  SenseVoice model : OK (%s)\n", modelDir)
+	if err := config.ValidateModelDir(cfg.Asr.Engine, modelDir); err == nil {
+		fmt.Printf("  ASR (%-10s)  : OK (%s)\n", cfg.Asr.Engine, modelDir)
 	} else {
-		fmt.Printf("  SenseVoice model : MISSING (%s)\n", modelDir)
+		fmt.Printf("  ASR (%-10s)  : MISSING (%v)\n", cfg.Asr.Engine, err)
 		ok = false
 	}
 
@@ -226,5 +228,46 @@ func cmdTestPolish(cfgPath, text string) int {
 	pol := polish.NewDoubaoPolisher(cfg.Polish)
 	fmt.Printf("Raw     : %s\n", text)
 	fmt.Printf("Polished: %s\n", pol.Polish(text))
+	return 0
+}
+
+func cmdTestASR(cfgPath string, args []string) int {
+	fs := flag.NewFlagSet("test-asr", flag.ExitOnError)
+	lang := fs.String("lang", "", "Override ASR language (auto|zh|en|yue)")
+	_ = fs.Parse(args)
+	if fs.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "Usage: voice-type test-asr [-lang auto|zh|en] <wav_file>")
+		return 1
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		log.Printf("Config error: %v", err)
+		return 1
+	}
+	if *lang != "" {
+		cfg.Asr.Language = *lang
+	}
+
+	raw, err := os.ReadFile(fs.Arg(0))
+	if err != nil || len(raw) <= 44 {
+		log.Printf("Failed to read WAV %s: %v", fs.Arg(0), err)
+		return 1
+	}
+	rate := int(binary.LittleEndian.Uint32(raw[24:28]))
+	pcm := raw[44:]
+	samples := make([]float32, len(pcm)/2)
+	for i := 0; i < len(samples); i++ {
+		s := int16(binary.LittleEndian.Uint16(pcm[i*2 : i*2+2]))
+		samples[i] = float32(s) / 32768.0
+	}
+
+	rec := asr.NewRecognizer(cfg.Asr, cfg.Polish.Glossary)
+	defer rec.Close()
+	text, err := rec.Transcribe(samples, rate)
+	if err != nil {
+		log.Printf("ASR error: %v", err)
+		return 1
+	}
+	fmt.Printf("ASR (%s, %.2fs): %s\n", cfg.Asr.Language, float64(len(samples))/float64(rate), text)
 	return 0
 }

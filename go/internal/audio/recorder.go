@@ -10,7 +10,10 @@ import (
 	"time"
 )
 
-const SampleRate = 16000
+const (
+	SampleRate       = 16000
+	BYTES_PER_SAMPLE = 2
+)
 
 type RecordedAudio struct {
 	Samples     []float32
@@ -50,6 +53,7 @@ func (r *PipeWireRecorder) Start() error {
 		fmt.Sprintf("--rate=%d", r.sampleRate),
 		"--channels=1",
 		"--format=s16",
+		"--latency=20ms",
 		"--raw",
 		"-",
 	)
@@ -123,6 +127,32 @@ func (r *PipeWireRecorder) Snapshot() *RecordedAudio {
 	return r.bytesToAudio(raw, elapsed)
 }
 
+// SnapshotFrom returns float32 samples starting from sampleOffset, along with total sample count.
+func (r *PipeWireRecorder) SnapshotFrom(sampleOffset int) ([]float32, int) {
+	r.mu.Lock()
+	totalSamples := len(r.buf) / BYTES_PER_SAMPLE
+	if sampleOffset < 0 {
+		sampleOffset = 0
+	}
+	if sampleOffset >= totalSamples {
+		r.mu.Unlock()
+		return nil, totalSamples
+	}
+	startByte := sampleOffset * BYTES_PER_SAMPLE
+	endByte := totalSamples * BYTES_PER_SAMPLE
+	raw := make([]byte, endByte-startByte)
+	copy(raw, r.buf[startByte:endByte])
+	r.mu.Unlock()
+
+	count := len(raw) / BYTES_PER_SAMPLE
+	samples := make([]float32, count)
+	for i := 0; i < count; i++ {
+		s := int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2]))
+		samples[i] = float32(s) / 32768.0
+	}
+	return samples, totalSamples
+}
+
 func (r *PipeWireRecorder) Stop() *RecordedAudio {
 	r.mu.Lock()
 	cmd := r.cmd
@@ -137,6 +167,8 @@ func (r *PipeWireRecorder) Stop() *RecordedAudio {
 	}
 
 	if cmd.Process != nil {
+		// Drain trailing PipeWire buffer (~80ms) so the last syllable isn't clipped
+		time.Sleep(80 * time.Millisecond)
 		_ = cmd.Process.Signal(syscall.SIGINT)
 		waitDone := make(chan error, 1)
 		go func() { waitDone <- cmd.Wait() }()

@@ -8,6 +8,7 @@
   :root {
     --bg: #141418;
     --card: #1d1e24;
+    --section-bg: rgba(255,255,255,0.025);
     --border: rgba(255,255,255,0.09);
     --text: #f4f4f5;
     --muted: #a1a1aa;
@@ -18,19 +19,42 @@
   * { box-sizing: border-box; }
   body {
     margin: 0;
-    padding: 28px 16px;
+    padding: 20px 24px 28px;
     background: var(--bg);
     color: var(--text);
     font-family: system-ui, -apple-system, "Noto Sans CJK SC", sans-serif;
     font-size: 14px;
   }
   .container {
-    max-width: 560px;
+    max-width: 1180px;
     margin: 0 auto;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 14px;
-    padding: 22px 24px;
+    padding: 20px 24px;
+  }
+  .sections-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .col-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .col-stack .section {
+    margin-bottom: 0;
+  }
+  @media (max-width: 920px) {
+    .container { max-width: 640px; }
+    .sections-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 520px) {
+    body { padding: 14px 10px 24px; }
+    .container { padding: 16px; }
+    .row { grid-template-columns: 1fr; gap: 6px; }
   }
   h1 {
     margin: 0 0 18px;
@@ -45,12 +69,34 @@
     background: var(--accent);
     display: inline-block;
   }
+  .section {
+    background: var(--section-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px 6px;
+    margin-bottom: 14px;
+  }
+  .section-title {
+    margin: 0 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.3px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .section-sub {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--muted);
+  }
   .row {
     display: grid;
     grid-template-columns: 145px 1fr;
     align-items: center;
     gap: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 11px;
   }
   label { color: var(--muted); font-size: 13px; }
   input[type="text"], input[type="password"], input[type="number"], select, textarea {
@@ -95,12 +141,13 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin: 14px 0 6px;
+    margin: 10px 0 6px;
   }
   textarea {
     min-height: 82px;
     resize: vertical;
     line-height: 1.5;
+    margin-bottom: 8px;
   }
   .footer {
     margin-top: 16px;
@@ -133,124 +180,195 @@
 <div class="container">
   <h1><span class="dot"></span> voice-type 设置</h1>
 
-  <div class="row">
-    <label>触发快捷键</label>
-    <div class="inline">
-      <input id="hotkeyKey" type="text" readonly />
-      <button id="recordBtn" type="button">录制快捷键</button>
+  <div class="sections-grid">
+  <div class="col-stack">
+  <div class="section">
+    <div class="section-title">
+      <span>基础功能与交互</span>
+      <span class="section-sub">快捷键 / 上屏 / 剪贴板 / 悬浮提示</span>
+    </div>
+
+    <div class="row">
+      <label>触发快捷键</label>
+      <div class="inline">
+        <input id="hotkeyKey" type="text" readonly />
+        <button id="recordBtn" type="button">录制快捷键</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>触发模式</label>
+      <select id="hotkeyMode">
+        <option value="push_to_talk">按住说话，松开上屏</option>
+        <option value="toggle">按一下开始，再按一下上屏</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>上屏粘贴方式</label>
+      <select id="pasteShortcut">
+        <option value="ctrl+v">Ctrl + V（通用应用）</option>
+        <option value="ctrl+shift+v">Ctrl + Shift + V（终端专用）</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>保护原剪贴板</label>
+      <div class="inline">
+        <input id="restoreClipboard" type="checkbox" style="width:auto;" />
+        <span style="color:var(--muted);font-size:13px;">上屏后自动恢复原本复制的内容</span>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>状态提示方式</label>
+      <select id="notifyMode">
+        <option value="hud">底部半透明胶囊 + 轻提示音</option>
+        <option value="osd">KDE 原生底部 OSD + 轻提示音</option>
+        <option value="sound">仅轻提示音（无弹窗）</option>
+        <option value="errors_only">完全静音（仅报错弹窗）</option>
+        <option value="off">全部关闭</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>胶囊距底边 (%)</label>
+      <div class="range-wrap">
+        <input id="hudBottom" type="range" min="5" max="35" step="1" value="12" />
+        <span class="range-val" id="hudBottomVal">12%</span>
+      </div>
     </div>
   </div>
 
-  <div class="row">
-    <label>触发模式</label>
-    <select id="hotkeyMode">
-      <option value="push_to_talk">按住说话，松开上屏</option>
-      <option value="toggle">按一下开始，再按一下上屏</option>
-    </select>
-  </div>
+  <div class="section">
+    <div class="section-title">
+      <span>语音识别与实时预览</span>
+      <span class="section-sub">缺失模型将自动回退到首个已安装模型</span>
+    </div>
 
-  <div class="row">
-    <label>上屏粘贴方式</label>
-    <select id="pasteShortcut">
-      <option value="ctrl+v">Ctrl + V（通用应用）</option>
-      <option value="ctrl+shift+v">Ctrl + Shift + V（终端专用）</option>
-    </select>
-  </div>
+    <div class="row">
+      <label>最终识别引擎</label>
+      <select id="asrEngine"></select>
+    </div>
 
-  <div class="row">
-    <label>状态提示方式</label>
-    <select id="notifyMode">
-      <option value="hud">底部半透明胶囊 + 轻提示音</option>
-      <option value="osd">KDE 原生底部 OSD + 轻提示音</option>
-      <option value="sound">仅轻提示音（无弹窗）</option>
-      <option value="errors_only">完全静音（仅报错弹窗）</option>
-      <option value="off">全部关闭</option>
-    </select>
-  </div>
+    <div class="row">
+      <label>实时预览引擎</label>
+      <select id="asrPreviewEngine"></select>
+    </div>
 
-  <div class="row">
-    <label>胶囊距底边 (%)</label>
-    <div class="range-wrap">
-      <input id="hudBottom" type="range" min="5" max="35" step="1" value="12" />
-      <span class="range-val" id="hudBottomVal">12%</span>
+    <div class="row">
+      <label>识别语言模式</label>
+      <select id="asrLanguage">
+        <option value="auto">自动检测（多语种）</option>
+        <option value="zh">中文优先（短词更稳）</option>
+        <option value="en">纯英文</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>内存回收阈值 (MB)</label>
+      <input id="maxRssMb" type="number" min="0" max="16384" step="128" placeholder="2560（超过后空闲自动释放，0 为不限制）" />
     </div>
   </div>
 
-  <div class="row">
-    <label>AI 长句润色</label>
-    <div class="inline">
-      <input id="polishEnabled" type="checkbox" style="width:auto;" />
-      <span style="color:var(--muted);font-size:13px;">启用本地大模型润色</span>
+  <div class="section">
+    <div class="section-title">
+      <span>日志与隐私</span>
+      <span class="section-sub">诊断日志控制</span>
+    </div>
+
+    <div class="row">
+      <label>日志级别</label>
+      <select id="logLevel">
+        <option value="error">Error（仅错误，最精简）</option>
+        <option value="warn">Warn（警告与错误）</option>
+        <option value="info">Info（常规状态，推荐）</option>
+        <option value="debug">Debug（详尽调试）</option>
+      </select>
+    </div>
+
+    <div class="row">
+      <label>隐私日志保护</label>
+      <div class="inline">
+        <input id="logTranscript" type="checkbox" style="width:auto;" />
+        <span style="color:var(--muted);font-size:13px;">记录语音识别原文（默认关闭，防止敏感信息落盘）</span>
+      </div>
     </div>
   </div>
-
-  <div class="row">
-    <label>LLM 接口地址</label>
-    <input id="baseUrl" type="text" placeholder="http://127.0.0.1:1234/v1" />
   </div>
 
-  <div class="row">
-    <label>LLM 凭据 (API Key)</label>
-    <div class="inline">
-      <input id="apiKey" type="password" />
-      <button id="toggleKeyBtn" type="button">显示</button>
+  <div class="col-stack">
+  <div class="section">
+    <div class="section-title">
+      <span>大模型润色与本地纠错</span>
+      <span class="section-sub">可选接入本地/云端 LLM 与 0ms 替换</span>
     </div>
-  </div>
 
-  <div class="row">
-    <label>LLM 模型名称</label>
-    <div class="inline">
-      <input id="modelName" type="text" list="modelList" placeholder="留空自动检测当前模型" />
-      <datalist id="modelList"></datalist>
-      <button id="detectBtn" type="button">自动检测</button>
+    <div class="row">
+      <label>AI 长句润色</label>
+      <div class="inline">
+        <input id="polishEnabled" type="checkbox" style="width:auto;" />
+        <span style="color:var(--muted);font-size:13px;">启用大模型润色</span>
+      </div>
     </div>
-  </div>
 
-  <div class="row">
-    <label>润色最短字数</label>
-    <input id="minChars" type="number" min="1" max="50" value="10" />
-  </div>
-
-  <div class="row">
-    <label>行业/领域标签</label>
-    <div class="tags" id="domainTags">
-      <button type="button" class="tag-btn" data-domain="it">IT / 软件开发</button>
-      <button type="button" class="tag-btn" data-domain="finance">金融 / 财经</button>
-      <button type="button" class="tag-btn" data-domain="office">日常办公</button>
-      <button type="button" class="tag-btn" data-domain="science">学术科研</button>
-      <button type="button" class="tag-btn" data-domain="medical">医学 / 健康</button>
-      <button type="button" class="tag-btn" data-domain="legal">法律 / 合规</button>
+    <div class="row">
+      <label>LLM 接口地址</label>
+      <input id="baseUrl" type="text" placeholder="http://127.0.0.1:1234/v1" />
     </div>
-  </div>
 
-  <div class="row">
-    <label>常用热词 / 专有名词</label>
-    <input id="glossary" type="text" placeholder="如：Bazzite, Wayland, KWin, star-ferry, SenseVoice" />
-  </div>
-
-  <div class="row">
-    <label>日志级别</label>
-    <select id="logLevel">
-      <option value="error">Error（仅错误，最精简）</option>
-      <option value="warn">Warn（警告与错误）</option>
-      <option value="info">Info（常规状态，推荐）</option>
-      <option value="debug">Debug（详尽调试）</option>
-    </select>
-  </div>
-
-  <div class="row">
-    <label>隐私日志保护</label>
-    <div class="inline">
-      <input id="logTranscript" type="checkbox" style="width:auto;" />
-      <span style="color:var(--muted);font-size:13px;">记录语音识别原文（默认关闭，防止敏感信息落盘）</span>
+    <div class="row">
+      <label>LLM 凭据 (API Key)</label>
+      <div class="inline">
+        <input id="apiKey" type="password" />
+        <button id="toggleKeyBtn" type="button">显示</button>
+      </div>
     </div>
-  </div>
 
-  <div class="prompt-header">
-    <label>润色系统提示词 (Prompt)</label>
-    <button id="resetPromptBtn" type="button">恢复默认</button>
+    <div class="row">
+      <label>LLM 模型名称</label>
+      <div class="inline">
+        <input id="modelName" type="text" list="modelList" placeholder="留空自动检测当前模型" />
+        <datalist id="modelList"></datalist>
+        <button id="detectBtn" type="button">自动检测</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>润色最短字数</label>
+      <input id="minChars" type="number" min="1" max="50" value="10" />
+    </div>
+
+    <div class="row">
+      <label>行业/领域标签</label>
+      <div class="tags" id="domainTags">
+        <button type="button" class="tag-btn" data-domain="it">IT / 软件开发</button>
+        <button type="button" class="tag-btn" data-domain="finance">金融 / 财经</button>
+        <button type="button" class="tag-btn" data-domain="office">日常办公</button>
+        <button type="button" class="tag-btn" data-domain="science">学术科研</button>
+        <button type="button" class="tag-btn" data-domain="medical">医学 / 健康</button>
+        <button type="button" class="tag-btn" data-domain="legal">法律 / 合规</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <label>常用术语参考</label>
+      <input id="glossary" type="text" placeholder="仅用于 LLM 润色参考，如：Bazzite, Wayland, KWin" />
+    </div>
+
+    <div class="row">
+      <label>0ms 本地纠错映射</label>
+      <input id="replacements" type="text" placeholder="格式：错词=正词, 够语言=Go语言, 技术战=技术栈" />
+    </div>
+
+    <div class="prompt-header">
+      <label>润色系统提示词 (Prompt)</label>
+      <button id="resetPromptBtn" type="button">恢复默认</button>
+    </div>
+    <textarea id="systemPrompt"></textarea>
   </div>
-  <textarea id="systemPrompt"></textarea>
+  </div>
+  </div>
 
   <div class="footer">
     <span class="status" id="status"></span>
@@ -380,13 +498,59 @@ el("closeBtn").addEventListener("click", () => {
   }, 150);
 });
 
+function populateEngineSelects(engines, selectedMain, selectedPreview) {
+  const mainSel = el("asrEngine");
+  const prevSel = el("asrPreviewEngine");
+  mainSel.innerHTML = "";
+  prevSel.innerHTML = "";
+
+  const offOpt = document.createElement("option");
+  offOpt.value = "off";
+  offOpt.textContent = "关闭实时预览";
+  prevSel.appendChild(offOpt);
+
+  let firstInstalled = "";
+  let firstInstalledPreview = "off";
+  (engines || []).forEach(item => {
+    const tag = item.installed ? " [已就绪]" : " [未下载]";
+    const opt = document.createElement("option");
+    opt.value = item.id;
+    opt.textContent = item.display_name + tag;
+    opt.disabled = !item.installed;
+    mainSel.appendChild(opt);
+    if (item.installed && !firstInstalled) {
+      firstInstalled = item.id;
+    }
+    if (item.supports_live_preview) {
+      const pOpt = document.createElement("option");
+      pOpt.value = item.id;
+      pOpt.textContent = item.display_name + tag;
+      pOpt.disabled = !item.installed;
+      prevSel.appendChild(pOpt);
+      if (item.installed && firstInstalledPreview === "off") {
+        firstInstalledPreview = item.id;
+      }
+    }
+  });
+
+  mainSel.value = selectedMain || firstInstalled;
+  if (!mainSel.value && firstInstalled) mainSel.value = firstInstalled;
+  prevSel.value = selectedPreview || firstInstalledPreview;
+  if (!prevSel.value) prevSel.value = firstInstalledPreview;
+}
+
 el("saveBtn").addEventListener("click", async () => {
   const domains = Array.from(document.querySelectorAll("#domainTags .tag-btn.active"))
     .map(b => b.dataset.domain);
   const payload = {
     hotkey_key: el("hotkeyKey").value.trim(),
     hotkey_mode: el("hotkeyMode").value,
+    asr_engine: el("asrEngine").value,
+    asr_preview_engine: el("asrPreviewEngine").value,
+    asr_language: el("asrLanguage").value,
+    max_rss_mb: Math.max(0, Number(el("maxRssMb").value) || 0),
     paste_shortcut: el("pasteShortcut").value,
+    restore_clipboard: el("restoreClipboard").checked,
     notify_mode: el("notifyMode").value,
     hud_bottom_percent: Number(el("hudBottom").value),
     polish_enabled: el("polishEnabled").checked,
@@ -396,6 +560,7 @@ el("saveBtn").addEventListener("click", async () => {
     min_chars_for_llm: Number(el("minChars").value) || 10,
     domains,
     glossary: el("glossary").value.trim(),
+    replacements: el("replacements").value.trim(),
     log_level: el("logLevel").value,
     log_transcript: el("logTranscript").checked,
     system_prompt: el("systemPrompt").value.trim()
@@ -415,7 +580,15 @@ el("saveBtn").addEventListener("click", async () => {
   const cfg = await res.json();
   el("hotkeyKey").value = cfg.hotkey.key || "KEY_RIGHTALT";
   el("hotkeyMode").value = cfg.hotkey.mode || "push_to_talk";
+  populateEngineSelects(
+    cfg.engines,
+    cfg.asr && cfg.asr.engine,
+    cfg.asr && cfg.asr.preview_engine
+  );
+  el("asrLanguage").value = (cfg.asr && cfg.asr.language) || "auto";
+  el("maxRssMb").value = (cfg.asr && typeof cfg.asr.max_rss_mb === "number") ? cfg.asr.max_rss_mb : 2560;
   el("pasteShortcut").value = cfg.injector.paste_shortcut || "ctrl+v";
+  el("restoreClipboard").checked = !!cfg.injector.restore_clipboard;
   el("notifyMode").value = cfg.notify.mode || "hud";
   const pct = cfg.notify.hud_bottom_percent || 12;
   el("hudBottom").value = pct;
@@ -430,6 +603,7 @@ el("saveBtn").addEventListener("click", async () => {
     btn.classList.toggle("active", activeDomains.has(btn.dataset.domain));
   });
   el("glossary").value = cfg.polish.glossary || "";
+  el("replacements").value = cfg.polish.replacements || "";
   el("logLevel").value = (cfg.logging && cfg.logging.level) || "info";
   el("logTranscript").checked = !!(cfg.logging && cfg.logging.log_transcript);
   el("systemPrompt").value = cfg.polish.system_prompt || DEFAULT_PROMPT;
